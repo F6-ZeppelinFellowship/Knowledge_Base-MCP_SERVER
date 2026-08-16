@@ -1,0 +1,40 @@
+# Python / Virtual Environment
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+backend/venv/
+
+# Environment variables / Credentials
+.env
+.env.local
+*.env
+
+# Vector DB & Storage
+/data/
+*.qdrant
+qdrant_storage/
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Frontend
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+
+# Logs & Testing
+*.log
+.pytest_cache/
+.coverage
