@@ -1,0 +1,23 @@
+[
+  {
+    "query": "What is the main topic of this document?",
+    "user_id": "demo-user",
+    "relevant_documents": [
+      "document-id-1"
+    ]
+  },
+  {
+    "query": "Explain the methodology used in the research.",
+    "user_id": "demo-user",
+    "relevant_documents": [
+      "document-id-2"
+    ]
+  },
+  {
+    "query": "What are the main findings?",
+    "user_id": "demo-user",
+    "relevant_documents": [
+      "document-id-3"
+    ]
+  }
+]
