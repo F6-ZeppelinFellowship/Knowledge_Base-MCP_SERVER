@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "personal-kb": {
+      "command": "python",
+      "args": [
+        "-m",
+        "app.mcp_server.server"
+      ],
+      "cwd": "C:\\PATH\\TO\\Knowledge_Base-MCP_SERVER\\backend",
+      "env": {
+        "QDRANT_URL": "http://localhost:6333",
+        "QDRANT_API_KEY": "",
+        "MCP_USER_ID": "demo-user",
+        "MCP_SCORE_THRESHOLD": "0.72"
+      }
+    }
+  }
+}
