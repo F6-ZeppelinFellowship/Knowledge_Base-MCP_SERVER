@@ -1,9 +1,12 @@
 import axios from 'axios'
 
 const TOKEN_KEY = 'pkb_access_token'
+const USER_EMAIL_KEY = 'user_email'
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 
 const client = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000',
+  baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -22,53 +25,50 @@ client.interceptors.response.use(
   (error) => {
     if (error?.response?.status === 401) {
       localStorage.removeItem(TOKEN_KEY)
-      localStorage.removeItem('user_email')
+      localStorage.removeItem(USER_EMAIL_KEY)
     }
     return Promise.reject(error)
   },
 )
 
 export const auth = {
-  async login(email, password) {
-    const params = new URLSearchParams()
-    params.append('username', email)
-    params.append('password', password)
+  login: async (email, password) => {
+    const formData = new URLSearchParams()
+    formData.append('username', email)
+    formData.append('password', password)
 
-    const { data } = await client.post('/auth/login', params, {
+    const res = await client.post('/auth/login', formData, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     })
-    
-    // Support common FastAPI OAuth2 token response keys
-    const token = data.access_token || data.token
-    localStorage.setItem(TOKEN_KEY, token)
-    localStorage.setItem('user_email', email)
-    return data
+
+    if (res.data.access_token) {
+      localStorage.setItem(TOKEN_KEY, res.data.access_token)
+      localStorage.setItem(USER_EMAIL_KEY, email)
+    }
+    return res.data
   },
 
-  async signup(email, password) {
+  register: async (email, password) => {
+    // Matched endpoint (/auth/signup) and body keys ({ username, password }) to FastAPI backend
     await client.post('/auth/signup', {
       username: email,
       password: password,
     })
-    return this.login(email, password)
+
+    // Auto-login right after successful signup
+    return auth.login(email, password)
   },
 
-  logout() {
+  logout: () => {
     localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem('user_email')
+    localStorage.removeItem(USER_EMAIL_KEY)
   },
 
-  getUserEmail() {
-    return localStorage.getItem('user_email') || ''
-  },
-
-  isAuthenticated() {
-    return Boolean(localStorage.getItem(TOKEN_KEY))
-  },
+  isAuthenticated: () => !!localStorage.getItem(TOKEN_KEY),
+  getUserEmail: () => localStorage.getItem(USER_EMAIL_KEY) || '',
 }
 
 export const documents = {
-  // Always guarantees a clean Array back to App.jsx / Sidebar.jsx
   list: async () => {
     const res = await client.get('/documents/list')
     const data = res.data
@@ -98,8 +98,8 @@ export const documents = {
 }
 
 export const search = {
-  query: (query, topK = 5) =>
-    client.get('/search', { params: { q: query, top_k: topK } }).then((r) => r.data),
+  query: (queryText, topK = 5) =>
+    client.get('/search', { params: { q: queryText, top_k: topK } }).then((r) => r.data),
 }
 
 export default client
