@@ -11,6 +11,7 @@ from qdrant_client.http.models import (
     FieldCondition,
     MatchValue,
     PayloadSchemaType,
+    Condition,
 )
 
 from app.core.config import settings
@@ -28,19 +29,22 @@ class QdrantStorage:
         location: Optional[str] = None,
     ):
         """
-        Initialize Qdrant client. If location=":memory:" or url is provided, connects accordingly.
-        Falls back to in-memory client if connection fails.
+        Initialize Qdrant client. Added check_compatibility=False to suppress version warnings.
         """
         if location:
-            self.client = QdrantClient(location=location)
+            self.client = QdrantClient(location=location, check_compatibility=False)
         else:
             q_url = url or settings.QDRANT_URL
             q_key = api_key or settings.QDRANT_API_KEY
             try:
-                self.client = QdrantClient(url=q_url, api_key=q_key or None)
+                self.client = QdrantClient(
+                    url=q_url,
+                    api_key=q_key or None,
+                    check_compatibility=False,
+                )
             except Exception as e:
                 logger.warning(f"Failed to connect to Qdrant at {q_url}: {e}. Falling back to in-memory mode.")
-                self.client = QdrantClient(location=":memory:")
+                self.client = QdrantClient(location=":memory:", check_compatibility=False)
 
     def ensure_collection_exists(
         self,
@@ -61,7 +65,6 @@ class QdrantStorage:
                     collection_name=col_name,
                     vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
                 )
-                # Create payload indexes for fast multi-tenant filtering (best effort for remote/server Qdrant)
                 try:
                     self.client.create_payload_index(
                         collection_name=col_name,
@@ -74,7 +77,7 @@ class QdrantStorage:
                         field_schema=PayloadSchemaType.KEYWORD,
                     )
                 except Exception as index_err:
-                    logger.debug(f"Payload index notice (ignored for in-memory Qdrant): {index_err}")
+                    logger.debug(f"Payload index notice: {index_err}")
             return True
         except Exception as e:
             logger.error(f"Error ensuring Qdrant collection '{col_name}' exists: {e}")
@@ -91,7 +94,6 @@ class QdrantStorage:
     ) -> List[str]:
         """
         Upsert chunk payload objects along with vector embeddings into Qdrant.
-        Returns a list of point IDs created.
         """
         col_name = collection_name or settings.QDRANT_COLLECTION_NAME
         self.ensure_collection_exists(collection_name=col_name, vector_size=len(vectors[0]) if vectors else None)
@@ -138,51 +140,42 @@ class QdrantStorage:
         collection_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Search Qdrant for similar vectors with optional user_id multi-tenant payload filter and score cutoff.
+        Search Qdrant for similar vectors with optional user_id payload filter and score cutoff.
         """
         col_name = collection_name or settings.QDRANT_COLLECTION_NAME
         self.ensure_collection_exists(collection_name=col_name, vector_size=len(query_vector))
 
         query_filter = None
         if user_id:
-            query_filter = Filter(
-                must=[
-                    FieldCondition(
-                        key="user_id",
-                        match=MatchValue(value=user_id),
-                    )
-                ]
-            )
+            must_list: List[Condition] = [
+                FieldCondition(
+                    key="user_id",
+                    match=MatchValue(value=user_id),
+                )
+            ]
+            query_filter = Filter(must=must_list)
 
-        if hasattr(self.client, "query_points"):
-            res = self.client.query_points(
-                collection_name=col_name,
-                query=query_vector,
-                query_filter=query_filter,
-                limit=top_k,
-                score_threshold=score_threshold,
-            )
-            results = res.points
-        else:
-            results = self.client.search(
-                collection_name=col_name,
-                query_vector=query_vector,
-                query_filter=query_filter,
-                limit=top_k,
-                score_threshold=score_threshold,
-            )
+        res = self.client.query_points(
+            collection_name=col_name,
+            query=query_vector,
+            query_filter=query_filter,
+            limit=top_k,
+            score_threshold=score_threshold,
+        )
+        results = res.points
 
         output = []
         for res_point in results:
+            payload = res_point.payload or {}
             output.append({
                 "chunk_id": res_point.id,
                 "score": float(res_point.score),
-                "document_id": res_point.payload.get("document_id"),
-                "user_id": res_point.payload.get("user_id"),
-                "filename": res_point.payload.get("filename"),
-                "chunk_index": res_point.payload.get("chunk_index"),
-                "content": res_point.payload.get("content"),
-                "metadata": res_point.payload.get("metadata", {}),
+                "document_id": payload.get("document_id"),
+                "user_id": payload.get("user_id"),
+                "filename": payload.get("filename"),
+                "chunk_index": payload.get("chunk_index"),
+                "content": payload.get("content"),
+                "metadata": payload.get("metadata", {}),
             })
 
         return output
@@ -197,7 +190,7 @@ class QdrantStorage:
         Delete all vector points belonging to a specific document_id (and user_id if provided).
         """
         col_name = collection_name or settings.QDRANT_COLLECTION_NAME
-        must_conditions = [
+        must_conditions: List[Condition] = [
             FieldCondition(key="document_id", match=MatchValue(value=document_id))
         ]
         if user_id:
@@ -223,7 +216,7 @@ class QdrantStorage:
         Retrieve all chunks for a given document sorted by chunk index.
         """
         col_name = collection_name or settings.QDRANT_COLLECTION_NAME
-        must_conditions = [
+        must_conditions: List[Condition] = [
             FieldCondition(key="document_id", match=MatchValue(value=document_id))
         ]
         if user_id:
@@ -242,14 +235,15 @@ class QdrantStorage:
 
         chunks = []
         for rec in records:
+            payload = rec.payload or {}
             chunks.append({
                 "chunk_id": rec.id,
-                "document_id": rec.payload.get("document_id"),
-                "user_id": rec.payload.get("user_id"),
-                "filename": rec.payload.get("filename"),
-                "chunk_index": rec.payload.get("chunk_index", 0),
-                "content": rec.payload.get("content"),
-                "metadata": rec.payload.get("metadata", {}),
+                "document_id": payload.get("document_id"),
+                "user_id": payload.get("user_id"),
+                "filename": payload.get("filename"),
+                "chunk_index": payload.get("chunk_index", 0),
+                "content": payload.get("content"),
+                "metadata": payload.get("metadata", {}),
             })
 
         chunks.sort(key=lambda x: x["chunk_index"])
@@ -264,7 +258,7 @@ class QdrantStorage:
         List distinct document sources/filenames available for a user.
         """
         col_name = collection_name or settings.QDRANT_COLLECTION_NAME
-        must_conditions = []
+        must_conditions: List[Condition] = []
         if user_id:
             must_conditions.append(
                 FieldCondition(key="user_id", match=MatchValue(value=user_id))
@@ -281,12 +275,13 @@ class QdrantStorage:
 
         docs: Dict[str, Dict[str, Any]] = {}
         for rec in records:
-            doc_id = rec.payload.get("document_id")
+            payload = rec.payload or {}
+            doc_id = payload.get("document_id")
             if doc_id and doc_id not in docs:
                 docs[doc_id] = {
                     "document_id": doc_id,
-                    "filename": rec.payload.get("filename"),
-                    "user_id": rec.payload.get("user_id"),
+                    "filename": payload.get("filename"),
+                    "user_id": payload.get("user_id"),
                     "chunk_count": 1,
                 }
             elif doc_id in docs:

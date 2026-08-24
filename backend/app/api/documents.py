@@ -1,6 +1,7 @@
 """
 Document upload, list, and delete REST endpoints.
 
+Fix: optional label fallback, multi-tenant isolation with authenticated user dependency.
 Fix: the `label` field is optional. When omitted or blank the filename
 (without extension) is used as the label, preventing the
 "Ingestion failed: label empty or too long" error that occurs when no
@@ -14,6 +15,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
+from app.api.auth import get_current_user
 from app.services.ingestion import ingest_document
 from app.db.qdrant import qdrant_db, QdrantStorage
 
@@ -35,28 +37,22 @@ def get_storage() -> QdrantStorage:
 
 
 # ---------------------------------------------------------------------------
-# Label resolution (THE CORE FIX)
+# Label resolution
 # ---------------------------------------------------------------------------
 
 def _resolve_label(label: Optional[str], filename: str) -> str:
     """
     Return a clean label for the document.
-
     Priority:
-      1. The caller-supplied ``label`` (stripped, if non-empty and within limits).
-      2. The filename stem (everything before the last dot) as a safe fallback.
-
-    Raises HTTPException 422 only if the resolved label is still empty after
-    all fallback attempts, which should never happen for a valid upload.
+      1. Caller-supplied label (stripped).
+      2. Filename stem fallback.
     """
     if label:
         label = label.strip()
 
-    # Fall back to filename stem when label is missing or blank
     if not label:
         label = os.path.splitext(filename)[0].strip() if filename else ""
 
-    # Truncate gracefully rather than rejecting — keeps UX smooth
     if len(label) > _LABEL_MAX_LEN:
         label = label[:_LABEL_MAX_LEN]
 
@@ -118,13 +114,12 @@ async def upload_document(
             detail="Uploaded file is empty.",
         )
 
-    # ── Ingest ───────────────────────────────────────────────────────────────
     document_id = str(uuid.uuid4())
     try:
         result = ingest_document(
             file_content=file_bytes,
             filename=file.filename or resolved_label,
-            user_id=user_id,
+            user_id=current_user,
             document_id=document_id,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
@@ -159,19 +154,19 @@ async def upload_document(
 
 @router.get("/list")
 def list_documents(
-    user_id: str = "anonymous",
+    current_user: str = Depends(get_current_user),
     storage: QdrantStorage = Depends(get_storage),
 ):
-    """List all documents stored for a given user."""
+    """List all documents stored for the current user."""
     try:
-        sources = storage.list_sources(user_id=user_id)
+        sources = storage.list_sources(user_id=current_user)
     except Exception as exc:
-        logger.exception("Failed to list documents for user '%s'", user_id)
+        logger.exception("Failed to list documents for user '%s'", current_user)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list documents: {exc}",
         )
-    return {"user_id": user_id, "documents": sources}
+    return {"user_id": current_user, "documents": sources}
 
 
 # ---------------------------------------------------------------------------
@@ -181,18 +176,18 @@ def list_documents(
 @router.delete("/{document_id}", status_code=status.HTTP_200_OK)
 def delete_document(
     document_id: str,
-    user_id: str = "anonymous",
+    current_user: str = Depends(get_current_user),
     storage: QdrantStorage = Depends(get_storage),
 ):
     """Delete all vector chunks for a specific document."""
     try:
-        storage.delete_document_chunks(document_id=document_id, user_id=user_id)
+        storage.delete_document_chunks(document_id=document_id, user_id=current_user)
     except Exception as exc:
         logger.exception(
-            "Failed to delete document '%s' for user '%s'", document_id, user_id
+            "Failed to delete document '%s' for user '%s'", document_id, current_user
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete document: {exc}",
         )
-    return {"document_id": document_id, "user_id": user_id, "status": "deleted"}
+    return {"document_id": document_id, "user_id": current_user, "status": "deleted"}
