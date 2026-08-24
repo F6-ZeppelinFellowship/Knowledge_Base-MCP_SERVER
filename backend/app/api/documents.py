@@ -2,10 +2,6 @@
 Document upload, list, and delete REST endpoints.
 
 Fix: optional label fallback, multi-tenant isolation with authenticated user dependency.
-Fix: the `label` field is optional. When omitted or blank the filename
-(without extension) is used as the label, preventing the
-"Ingestion failed: label empty or too long" error that occurs when no
-label is sent in the multipart form data.
 """
 
 import os
@@ -59,8 +55,7 @@ def _resolve_label(label: Optional[str], filename: str) -> str:
     if not label:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Could not determine a valid label for the document. "
-                   "Please provide a non-empty label.",
+            detail="Could not determine a valid label for the document.",
         )
 
     return label
@@ -73,32 +68,17 @@ def _resolve_label(label: Optional[str], filename: str) -> str:
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: UploadFile = File(..., description="Document file (.pdf, .md, .txt)"),
-    label: Optional[str] = Form(
-        default=None,
-        description=(
-            "Human-readable name for the document. "
-            "Defaults to the filename when omitted."
-        ),
-    ),
-    user_id: str = Form(
-        default="anonymous",
-        description="Tenant / user identifier for multi-tenant isolation.",
-    ),
+    label: Optional[str] = Form(default=None),
     chunk_size: Optional[int] = Form(default=None),
     chunk_overlap: Optional[int] = Form(default=None),
+    current_user: str = Depends(get_current_user),
     storage: QdrantStorage = Depends(get_storage),
 ):
     """
-    Upload and ingest a document into the vector store.
-
-    - **file**: The document to upload (PDF, Markdown, or plain text).
-    - **label**: Optional display name. Falls back to the filename when not supplied.
-    - **user_id**: Scopes the document to a specific tenant/user.
+    Upload and ingest a document scoped to the current authenticated user.
     """
-    # ── Resolve label (THE FIX) ──────────────────────────────────────────────
     resolved_label = _resolve_label(label, file.filename or "")
 
-    # ── Read file bytes ──────────────────────────────────────────────────────
     try:
         file_bytes = await file.read()
     except Exception as exc:
