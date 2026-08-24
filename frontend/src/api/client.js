@@ -49,13 +49,11 @@ export const auth = {
   },
 
   register: async (email, password) => {
-    // Matched endpoint (/auth/signup) and body keys ({ username, password }) to FastAPI backend
     await client.post('/auth/signup', {
       username: email,
       password: password,
     })
 
-    // Auto-login right after successful signup
     return auth.login(email, password)
   },
 
@@ -98,8 +96,17 @@ export const documents = {
 }
 
 export const search = {
-  query: (queryText, topK = 5) =>
-    client.get('/search', { params: { q: queryText, top_k: topK } }).then((r) => r.data),
+  query: async (q, topK = 5, scoreThreshold = 0.0) => {
+    // Uses configured Axios client so request interceptors handle the Authorization header
+    const res = await client.get('/search/', {
+      params: {
+        q,
+        top_k: topK,
+        score_threshold: scoreThreshold,
+      },
+    })
+    return res.data
+  },
 }
 
 export default client

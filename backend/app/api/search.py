@@ -10,10 +10,9 @@ router = APIRouter(prefix="/search", tags=["Search"])
 async def search_notes(
     q: str = Query(..., description="Search query string"),
     top_k: int = Query(5, ge=1, le=20),
-    score_threshold: Optional[float] = Query(0.70, ge=0.0, le=1.0),
+    score_threshold: Optional[float] = Query(0.0, ge=0.0, le=1.0), # Set default to 0.0 to inspect raw scores
     current_user: str = Depends(get_current_user)
 ):
-    """Execute vector search scoped to the authenticated user."""
     results = search_qdrant(
         query=q,
         user_id=current_user,

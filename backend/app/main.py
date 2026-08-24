@@ -26,8 +26,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 app.include_router(auth.router, tags=["auth"])
 app.include_router(documents.router, prefix="/documents", tags=["documents"])
-app.include_router(search.router, prefix="/search", tags=["search"])
-
+app.include_router(search.router, tags=["search"])
 
 @app.get("/health", tags=["health"])
 def health_check():
