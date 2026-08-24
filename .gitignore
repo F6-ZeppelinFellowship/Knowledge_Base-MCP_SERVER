@@ -19,6 +19,7 @@ backend/venv/
 # Vector DB & Storage
 /data/
 *.qdrant
+qdrant_db/
 qdrant_storage/
 
 # IDE & OS

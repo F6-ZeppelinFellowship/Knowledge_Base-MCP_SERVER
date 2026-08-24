@@ -17,16 +17,7 @@ def search_qdrant(
 ) -> List[Dict[str, Any]]:
     """
     Core similarity search engine over vector store.
-
-    Parameters:
-    - query: Natural language search query string.
-    - user_id: Optional tenant isolation user ID filter.
-    - top_k: Maximum number of search results to return.
-    - score_threshold: Minimum similarity score cutoff threshold (e.g., Cosine >= 0.72).
-    - storage: Custom QdrantStorage instance (optional).
-    - embedder: Custom EmbeddingService instance (optional).
-
-    Returns list of dicts containing chunk metadata, content, and similarity score.
+    Formats payload to align with frontend ResultCard component expectations.
     """
     if not query or not query.strip():
         return []
@@ -37,15 +28,31 @@ def search_qdrant(
     # 1. Embed query
     query_vector = emb_service.embed_text(query)
 
-    # 2. Search Qdrant DB with user_id payload filter and score cutoff
-    results = db.search(
+    # 2. Search Qdrant DB
+    raw_results = db.search(
         query_vector=query_vector,
         user_id=user_id,
         top_k=top_k,
         score_threshold=score_threshold,
     )
 
-    return results
+    # 3. Standardize structure for ResultCard.jsx
+    formatted_results = []
+    for item in raw_results:
+        # Handle dict or Qdrant ScoredPoint structures
+        payload = item.get("payload", item) if isinstance(item, dict) else getattr(item, "payload", {})
+        score = item.get("score", 0.0) if isinstance(item, dict) else getattr(item, "score", 0.0)
+
+        formatted_results.append({
+            "chunk_text": payload.get("chunk_text") or payload.get("text") or "",
+            "score": float(score),
+            "source": {
+                "filename": payload.get("filename") or payload.get("source_file") or "Unknown Document",
+                "page": payload.get("page") or payload.get("page_number"),
+            }
+        })
+
+    return formatted_results
 
 
 def get_document(
@@ -55,8 +62,6 @@ def get_document(
 ) -> List[Dict[str, Any]]:
     """
     Retrieve full document content by reconstructing chunks in sequence.
-
-    Contract helper function for Engineer 2 (MCP) and Engineer 3 (FastAPI).
     """
     db = storage or qdrant_db
     return db.get_document_chunks(document_id=document_id, user_id=user_id)
@@ -67,12 +72,26 @@ def list_sources(
     storage: Optional[QdrantStorage] = None,
 ) -> List[Dict[str, Any]]:
     """
-    List available document sources/files for a given user.
-
-    Contract helper function for Engineer 2 (MCP) and Engineer 3 (FastAPI).
+    List available document sources/files formatted for Sidebar.jsx.
     """
     db = storage or qdrant_db
-    return db.list_sources(user_id=user_id)
+    raw_sources = db.list_sources(user_id=user_id)
+
+    formatted_sources = []
+    for src in raw_sources:
+        doc_id = src.get("id") or src.get("document_id") or src.get("file_id")
+        filename = src.get("filename") or src.get("source_file") or "Untitled Document"
+        size_bytes = src.get("size_bytes") or src.get("file_size") or 0
+        status = src.get("status", "completed")
+
+        formatted_sources.append({
+            "id": str(doc_id),
+            "filename": str(filename),
+            "size_bytes": int(size_bytes),
+            "status": str(status)
+        })
+
+    return formatted_sources
 
 
 def delete_document(
