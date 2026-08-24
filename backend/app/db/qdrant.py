@@ -29,23 +29,31 @@ class QdrantStorage:
         location: Optional[str] = None,
     ):
         """
-        Initialize Qdrant client. Added check_compatibility=False to suppress version warnings.
+        Initialize Qdrant client safely with fallback to in-memory mode.
         """
         if location:
             self.client = QdrantClient(location=location, check_compatibility=False)
         else:
-            q_url = url or settings.QDRANT_URL
+            q_url = (url or settings.QDRANT_URL or "").strip()
             q_key = api_key or settings.QDRANT_API_KEY
-            try:
-                self.client = QdrantClient(
-                    url=q_url,
-                    api_key=q_key or None,
-                    check_compatibility=False,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to connect to Qdrant at {q_url}: {e}. Falling back to in-memory mode.")
-                self.client = QdrantClient(location=":memory:", check_compatibility=False)
 
+            # If QDRANT_URL is omitted or invalid, default to in-memory vector storage
+            if not q_url:
+                logger.warning("No valid QDRANT_URL provided. Falling back to in-memory mode.")
+                self.client = QdrantClient(location=":memory:", check_compatibility=False)
+            else:
+                try:
+                    self.client = QdrantClient(
+                        url=q_url,
+                        api_key=q_key or None,
+                        check_compatibility=False,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to connect to Qdrant at {q_url}: {e}. Falling back to in-memory mode."
+                    )
+                    self.client = QdrantClient(location=":memory:", check_compatibility=False)
+                    
     def ensure_collection_exists(
         self,
         collection_name: Optional[str] = None,
