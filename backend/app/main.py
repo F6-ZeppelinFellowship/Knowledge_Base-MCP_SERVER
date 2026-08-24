@@ -1,9 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.core.config import settings
 from app.api import auth, documents, search
 
-app = FastAPI(title="Personal Knowledge-Base API")
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
+    description="Personal Knowledge-Base MCP Server REST API",
+)
 
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -12,10 +21,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
-app.include_router(documents.router)
-app.include_router(search.router)
+# ---------------------------------------------------------------------------
+# Routers
+# ---------------------------------------------------------------------------
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(documents.router, prefix="/documents", tags=["documents"])
+app.include_router(search.router, prefix="/search", tags=["search"])
 
-@app.get("/")
+
+@app.get("/health", tags=["health"])
 def health_check():
-    return {"status": "healthy", "service": "Personal KB API"}
+    """Simple liveness probe."""
+    return {"status": "ok", "version": settings.VERSION}
