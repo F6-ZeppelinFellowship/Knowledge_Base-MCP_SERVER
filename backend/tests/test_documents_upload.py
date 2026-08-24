@@ -15,6 +15,8 @@ from app.main import app
 from app.api.documents import get_storage
 from app.db.qdrant import QdrantStorage
 
+from app.api.documents import get_current_user
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -26,8 +28,15 @@ def override_storage():
     instance for every test in this module.
     """
     mem_storage = QdrantStorage(location=":memory:")
+
+    # Override storage dependency
     app.dependency_overrides[get_storage] = lambda: mem_storage
+    
+    # Override auth dependency to return a mock user
+    app.dependency_overrides[get_current_user] = lambda: "test_user@example.com"
+    
     yield
+    
     app.dependency_overrides.clear()
 
 

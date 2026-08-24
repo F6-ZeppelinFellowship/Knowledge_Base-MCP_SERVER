@@ -3,7 +3,7 @@ import axios from 'axios'
 const TOKEN_KEY = 'pkb_access_token'
 
 const client = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000',
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -22,6 +22,7 @@ client.interceptors.response.use(
   (error) => {
     if (error?.response?.status === 401) {
       localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem('user_email')
     }
     return Promise.reject(error)
   },
@@ -37,7 +38,9 @@ export const auth = {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     })
     
-    localStorage.setItem(TOKEN_KEY, data.access_token)
+    // Support common FastAPI OAuth2 token response keys
+    const token = data.access_token || data.token
+    localStorage.setItem(TOKEN_KEY, token)
     localStorage.setItem('user_email', email)
     return data
   },
@@ -65,7 +68,17 @@ export const auth = {
 }
 
 export const documents = {
-  list: () => client.get('/documents/list').then((r) => r.data),
+  // Always guarantees a clean Array back to App.jsx / Sidebar.jsx
+  list: async () => {
+    const res = await client.get('/documents/list')
+    const data = res.data
+    if (Array.isArray(data)) return data
+    if (Array.isArray(data?.documents)) return data.documents
+    if (Array.isArray(data?.sources)) return data.sources
+    if (Array.isArray(data?.files)) return data.files
+    return []
+  },
+
   upload: (file, onProgress) => {
     const form = new FormData()
     form.append('file', file)
@@ -80,7 +93,7 @@ export const documents = {
       })
       .then((r) => r.data)
   },
-  // Fixed endpoint path to match @router.delete("/{document_id}") in documents.py
+
   remove: (documentId) => client.delete(`/documents/${documentId}`).then((r) => r.data),
 }
 
@@ -90,5 +103,3 @@ export const search = {
 }
 
 export default client
-
-

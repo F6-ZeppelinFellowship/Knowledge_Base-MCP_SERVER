@@ -1,137 +1,167 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import SearchBar from './components/SearchBar'
 import ResultCard from './components/ResultCard'
-import { auth, documents, search } from './api/client'
 import AuthModal from './components/AuthModal'
-import { Sparkles, Search as SearchIcon, Server } from 'lucide-react'
+import { auth, documents, search } from './api/client'
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(auth.isAuthenticated())
   const [userEmail, setUserEmail] = useState(auth.getUserEmail())
-  const [activeTab, setActiveTab] = useState('search') // 'search' | 'mcp'
-  
-  const [docs, setDocs] = useState([])
+  const [docsList, setDocsList] = useState([])
   const [uploads, setUploads] = useState([])
+  
+  // Search state
   const [query, setQuery] = useState('')
   const [topK, setTopK] = useState(5)
-  const [results, setResults] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [searchResults, setSearchResults] = useState([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [hasSearched, setHasSearched] = useState(false)
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadDocuments()
+  // Load user documents on mount / auth state change
+  const fetchDocuments = useCallback(async () => {
+    if (!isAuthenticated) return
+    try {
+      const data = await documents.list()
+      setDocsList(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error('Failed to fetch document list:', err)
+      setDocsList([])
     }
   }, [isAuthenticated])
 
-  const loadDocuments = async () => {
+  useEffect(() => {
+    fetchDocuments()
+  }, [fetchDocuments])
+
+  // Auth Handlers
+  const handleLoginSuccess = (email) => {
+    setIsAuthenticated(true)
+    setUserEmail(email)
+  }
+
+  const handleLogout = () => {
+    auth.logout()
+    setIsAuthenticated(false)
+    setUserEmail('')
+    setDocsList([])
+    setSearchResults([])
+    setHasSearched(false)
+  }
+
+  // Upload Handler with progress tracking & auto-refresh
+  const handleUpload = async (file) => {
+    const uploadId = `${file.name}-${Date.now()}`
+    
+    setUploads((prev) => [
+      ...prev,
+      { id: uploadId, name: file.name, progress: 0, status: 'uploading' },
+    ])
+
     try {
-      const data = await documents.list()
-      setDocs(data)
+      await documents.upload(file, (progress) => {
+        setUploads((prev) =>
+          prev.map((item) =>
+            item.id === uploadId ? { ...item, progress } : item
+          )
+        )
+      })
+
+      setUploads((prev) =>
+        prev.map((item) =>
+          item.id === uploadId ? { ...item, progress: 100, status: 'complete' } : item
+        )
+      )
+
+      await fetchDocuments()
+
+      setTimeout(() => {
+        setUploads((prev) => prev.filter((item) => item.id !== uploadId))
+      }, 2000)
     } catch (err) {
-      console.error("Failed to load documents", err)
+      console.error('Upload failed:', err)
+      setUploads((prev) =>
+        prev.map((item) =>
+          item.id === uploadId ? { ...item, status: 'error' } : item
+        )
+      )
     }
   }
 
+  // Delete Document Handler
+  const handleDeleteDocument = async (documentId) => {
+    try {
+      await documents.remove(documentId)
+      await fetchDocuments()
+    } catch (err) {
+      console.error('Failed to delete document:', err)
+    }
+  }
+
+  // Search Handler
   const handleSearch = async () => {
     if (!query.trim()) return
-    setLoading(true)
+    setIsSearching(true)
+    setHasSearched(true)
+
     try {
-      const res = await search.query(query, topK)
-      setResults(res)
+      const results = await search.query(query, topK)
+      setSearchResults(Array.isArray(results) ? results : results?.results || [])
     } catch (err) {
-      console.error("Search failed", err)
+      console.error('Search query failed:', err)
+      setSearchResults([])
     } finally {
-      setLoading(false)
+      setIsSearching(false)
     }
   }
 
   if (!isAuthenticated) {
-    return (
-      <AuthModal
-        onAuthenticated={(email) => {
-          setUserEmail(email)
-          setIsAuthenticated(true)
-        }}
-      />
-    )
+    return <AuthModal onAuthSuccess={handleLoginSuccess} />
   }
 
   return (
-    <div className="min-h-screen bg-base-950 flex flex-col md:flex-row text-slate-100">
-      {/* Sidebar: Ingestion & Document List (Member 1) */}
+    <div className="min-h-screen flex flex-col md:flex-row bg-base-900 text-slate-100 font-sans antialiased">
+      {/* Sidebar */}
       <Sidebar
         userEmail={userEmail}
-        docs={docs}
+        docs={docsList}
         uploads={uploads}
-        onUpload={(file) => { /* handle file upload flow */ }}
-        onDelete={async (id) => { await documents.remove(id); loadDocuments() }}
-        onLogout={() => { auth.logout(); setIsAuthenticated(false) }}
+        onUpload={handleUpload}
+        onDelete={handleDeleteDocument}
+        onLogout={handleLogout}
       />
 
-      {/* Main Workspace Area */}
-      <main className="flex-1 p-4 md:p-8 max-w-5xl mx-auto w-full flex flex-col gap-6">
-        {/* Navigation Tabs for Team Integrations */}
-        <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
-          <div>
-            <h1 className="text-xl font-semibold text-slate-100">Workspace</h1>
-            <p className="text-xs text-slate-400">Search indexed vector chunks or interface with MCP tool servers.</p>
-          </div>
-          <div className="flex gap-2 bg-base-900 p-1 rounded-lg border border-white/5">
-            <button
-              onClick={() => setActiveTab('search')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                activeTab === 'search' ? 'bg-match-high/20 text-match-high' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <SearchIcon size={14} /> Search Index
-            </button>
-            <button
-              onClick={() => setActiveTab('mcp')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                activeTab === 'mcp' ? 'bg-match-high/20 text-match-high' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Server size={14} /> MCP Tools (Member 2)
-            </button>
-          </div>
-        </div>
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-w-0 px-4 py-6 md:px-8 md:py-8">
+        <div className="max-w-4xl mx-auto w-full space-y-6">
+          <SearchBar
+            query={query}
+            setQuery={setQuery}
+            topK={topK}
+            setTopK={setTopK}
+            onSearch={handleSearch}
+            loading={isSearching}
+          />
 
-        {/* Tab 1: Member 3 Search Interface */}
-        {activeTab === 'search' && (
-          <div className="space-y-6">
-            <SearchBar
-              query={query}
-              setQuery={setQuery}
-              topK={topK}
-              setTopK={setTopK}
-              onSearch={handleSearch}
-              loading={loading}
-            />
+          {/* Search Results Display */}
+          {hasSearched && (
+            <div className="space-y-4">
+              <p className="text-xs uppercase tracking-wide text-slate-500 font-medium px-1">
+                {isSearching ? 'Searching Vector Database...' : `Results (${searchResults.length})`}
+              </p>
 
-            {/* Results Grid / List */}
-            <div className="space-y-3">
-              {results.length > 0 ? (
-                results.map((res, idx) => <ResultCard key={idx} result={res} />)
-              ) : (
-                <div className="text-center py-12 text-slate-500 text-sm">
-                  {loading ? 'Searching Qdrant collection...' : 'No query executed. Type a search above to query document vectors.'}
+              {searchResults.length === 0 && !isSearching ? (
+                <div className="glass-card p-8 text-center text-slate-400">
+                  No matching vector context found for standard query thresholds.
                 </div>
+              ) : (
+                searchResults.map((result, idx) => (
+                  <ResultCard key={result.chunk_id || result.id || idx} result={result} />
+                ))
               )}
             </div>
-          </div>
-        )}
-
-        {/* Tab 2: Slot for Member 2's MCP integration */}
-        {activeTab === 'mcp' && (
-          <div className="glass-card p-6 rounded-xl text-center text-slate-400 text-sm space-y-2">
-            <Sparkles className="mx-auto text-match-high mb-2" size={24} />
-            <p className="font-medium text-slate-200">Model Context Protocol Server Ready</p>
-            <p className="text-xs max-w-md mx-auto text-slate-500">
-              Member 2 can attach MCP agent execution interfaces, prompt templates, or custom tool inspection cards here.
-            </p>
-          </div>
-        )}
+          )}
+        </div>
       </main>
     </div>
   )

@@ -14,6 +14,11 @@ export default function Sidebar({ userEmail, docs, uploads, onUpload, onDelete, 
   const [isDragging, setIsDragging] = useState(false)
   const inputRef = useRef(null)
 
+  // Normalize docs prop safely to prevent array mapping crashes
+  const documentList = Array.isArray(docs) 
+    ? docs 
+    : (docs?.sources || docs?.documents || [])
+
   const handleFiles = useCallback(
     (fileList) => {
       Array.from(fileList).forEach((file) => onUpload(file))
@@ -85,7 +90,7 @@ export default function Sidebar({ userEmail, docs, uploads, onUpload, onDelete, 
       </div>
 
       {/* Upload progress */}
-      {uploads.length > 0 && (
+      {uploads && uploads.length > 0 && (
         <div className="space-y-2">
           {uploads.map((u) => (
             <div key={u.id} className="px-3.5 py-2.5 rounded-lg bg-base-800/50 border border-white/[0.06]">
@@ -114,42 +119,45 @@ export default function Sidebar({ userEmail, docs, uploads, onUpload, onDelete, 
           <p className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">
             Documents
           </p>
-          <span className="text-[11px] text-slate-600 font-mono">{docs.length}</span>
+          <span className="text-[11px] text-slate-600 font-mono">{documentList.length}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
-          {docs.length === 0 ? (
+          {documentList.length === 0 ? (
             <p className="text-xs text-slate-600 px-1 py-3 leading-relaxed">
               Nothing indexed yet. Upload a document to start building your knowledge base.
             </p>
           ) : (
-            docs.map((doc) => (
-              <div
-                key={doc.id}
-                className="group flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/[0.04] transition-colors"
-              >
-                <div className="w-7 h-7 rounded-md bg-base-700/70 flex items-center justify-center shrink-0">
-                  {doc.status === 'processing' ? (
-                    <Loader2 size={13} className="text-amber-400 animate-spin" />
-                  ) : (
-                    <FileText size={13} className="text-slate-400" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-slate-200 truncate">{doc.filename}</p>
-                  <p className="text-[11px] text-slate-500 font-mono">
-                    {doc.status === 'processing' ? 'Indexing…' : formatBytes(doc.size_bytes)}
-                  </p>
-                </div>
-                <button
-                  onClick={() => onDelete(doc.id)}
-                  aria-label={`Delete ${doc.filename}`}
-                  className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-all p-1 rounded"
+            documentList.map((doc) => {
+              const docId = doc.document_id || doc.id || doc.filename
+              return (
+                <div
+                  key={docId}
+                  className="group flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/[0.04] transition-colors"
                 >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))
+                  <div className="w-7 h-7 rounded-md bg-base-700/70 flex items-center justify-center shrink-0">
+                    {doc.status === 'processing' ? (
+                      <Loader2 size={13} className="text-amber-400 animate-spin" />
+                    ) : (
+                      <FileText size={13} className="text-slate-400" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-slate-200 truncate">{doc.label || doc.filename || doc.source}</p>
+                    <p className="text-[11px] text-slate-500 font-mono">
+                      {doc.status === 'processing' ? 'Indexing…' : formatBytes(doc.size_bytes)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => onDelete(docId)}
+                    aria-label={`Delete ${doc.filename || doc.label}`}
+                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-all p-1 rounded"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )
+            })
           )}
         </div>
       </div>

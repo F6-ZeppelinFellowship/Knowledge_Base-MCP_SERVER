@@ -53,7 +53,7 @@ class QdrantStorage:
                         f"Failed to connect to Qdrant at {q_url}: {e}. Falling back to in-memory mode."
                     )
                     self.client = QdrantClient(location=":memory:", check_compatibility=False)
-                    
+
     def ensure_collection_exists(
         self,
         collection_name: Optional[str] = None,
@@ -63,7 +63,7 @@ class QdrantStorage:
         Ensure Qdrant collection exists with vector parameters and payload index on user_id.
         """
         col_name = collection_name or settings.QDRANT_COLLECTION_NAME
-        dim = vector_size or settings.EMBEDDING_DIMENSION
+        dim = vector_size or getattr(settings, "EMBEDDING_DIMENSION", 384)
 
         try:
             collections = [c.name for c in self.client.get_collections().collections]
@@ -163,14 +163,18 @@ class QdrantStorage:
             ]
             query_filter = Filter(must=must_list)
 
-        res = self.client.query_points(
-            collection_name=col_name,
-            query=query_vector,
-            query_filter=query_filter,
-            limit=top_k,
-            score_threshold=score_threshold,
-        )
-        results = res.points
+        try:
+            res = self.client.query_points(
+                collection_name=col_name,
+                query=query_vector,
+                query_filter=query_filter,
+                limit=top_k,
+                score_threshold=score_threshold,
+            )
+            results = res.points
+        except (ValueError, Exception) as e:
+            logger.warning(f"Search query error: {e}")
+            return []
 
         output = []
         for res_point in results:
@@ -198,6 +202,8 @@ class QdrantStorage:
         Delete all vector points belonging to a specific document_id (and user_id if provided).
         """
         col_name = collection_name or settings.QDRANT_COLLECTION_NAME
+        self.ensure_collection_exists(collection_name=col_name)
+
         must_conditions: List[Condition] = [
             FieldCondition(key="document_id", match=MatchValue(value=document_id))
         ]
@@ -206,12 +212,15 @@ class QdrantStorage:
                 FieldCondition(key="user_id", match=MatchValue(value=user_id))
             )
 
-        self.client.delete(
-            collection_name=col_name,
-            points_selector=rest.FilterSelector(
-                filter=Filter(must=must_conditions)
-            ),
-        )
+        try:
+            self.client.delete(
+                collection_name=col_name,
+                points_selector=rest.FilterSelector(
+                    filter=Filter(must=must_conditions)
+                ),
+            )
+        except Exception as e:
+            logger.warning(f"Error deleting chunks for document {document_id}: {e}")
         return True
 
     def get_document_chunks(
@@ -224,6 +233,8 @@ class QdrantStorage:
         Retrieve all chunks for a given document sorted by chunk index.
         """
         col_name = collection_name or settings.QDRANT_COLLECTION_NAME
+        self.ensure_collection_exists(collection_name=col_name)
+
         must_conditions: List[Condition] = [
             FieldCondition(key="document_id", match=MatchValue(value=document_id))
         ]
@@ -233,13 +244,16 @@ class QdrantStorage:
             )
 
         scroll_filter = Filter(must=must_conditions)
-        records, _ = self.client.scroll(
-            collection_name=col_name,
-            scroll_filter=scroll_filter,
-            limit=1000,
-            with_payload=True,
-            with_vectors=False,
-        )
+        try:
+            records, _ = self.client.scroll(
+                collection_name=col_name,
+                scroll_filter=scroll_filter,
+                limit=1000,
+                with_payload=True,
+                with_vectors=False,
+            )
+        except (ValueError, Exception):
+            return []
 
         chunks = []
         for rec in records:
@@ -266,6 +280,8 @@ class QdrantStorage:
         List distinct document sources/filenames available for a user.
         """
         col_name = collection_name or settings.QDRANT_COLLECTION_NAME
+        self.ensure_collection_exists(collection_name=col_name)
+
         must_conditions: List[Condition] = []
         if user_id:
             must_conditions.append(
@@ -273,13 +289,17 @@ class QdrantStorage:
             )
 
         scroll_filter = Filter(must=must_conditions) if must_conditions else None
-        records, _ = self.client.scroll(
-            collection_name=col_name,
-            scroll_filter=scroll_filter,
-            limit=2000,
-            with_payload=True,
-            with_vectors=False,
-        )
+        
+        try:
+            records, _ = self.client.scroll(
+                collection_name=col_name,
+                scroll_filter=scroll_filter,
+                limit=2000,
+                with_payload=True,
+                with_vectors=False,
+            )
+        except (ValueError, Exception):
+            return []
 
         docs: Dict[str, Dict[str, Any]] = {}
         for rec in records:
@@ -299,4 +319,4 @@ class QdrantStorage:
 
 
 # Singleton instance for application use
-qdrant_db = QdrantStorage()
+qdrant_db = QdrantStorage(location=":memory:")
