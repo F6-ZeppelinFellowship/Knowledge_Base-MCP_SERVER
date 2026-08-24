@@ -10,7 +10,7 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach JWT bearer token to outgoing requests
+// Attach JWT bearer token automatically to ALL outgoing requests
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_KEY)
   if (token) {
@@ -96,13 +96,12 @@ export const documents = {
 }
 
 export const search = {
-  query: async (q, topK = 5, scoreThreshold = 0.0) => {
-    // Uses configured Axios client so request interceptors handle the Authorization header
-    const res = await client.get('/search/', {
+  query: async (queryText, topK = 5) => {
+    // Uses client (axios) so Authorization Bearer header is automatically attached
+    const res = await client.get('/search', {
       params: {
-        q,
+        q: queryText,
         top_k: topK,
-        score_threshold: scoreThreshold,
       },
     })
     return res.data
