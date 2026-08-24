@@ -1,0 +1,102 @@
+[
+  {
+    "query_id": "q01",
+    "query": "What is the main objective of this document?",
+    "relevant_documents": ["document_001"]
+  },
+  {
+    "query_id": "q02",
+    "query": "What problem is being addressed in the research?",
+    "relevant_documents": ["document_001"]
+  },
+  {
+    "query_id": "q03",
+    "query": "What methodology was used in the study?",
+    "relevant_documents": ["document_002"]
+  },
+  {
+    "query_id": "q04",
+    "query": "What are the main findings of the research?",
+    "relevant_documents": ["document_002"]
+  },
+  {
+    "query_id": "q05",
+    "query": "What datasets were used for the experiments?",
+    "relevant_documents": ["document_003"]
+  },
+  {
+    "query_id": "q06",
+    "query": "What evaluation metrics were used to measure performance?",
+    "relevant_documents": ["document_003"]
+  },
+  {
+    "query_id": "q07",
+    "query": "What are the limitations of the proposed approach?",
+    "relevant_documents": ["document_004"]
+  },
+  {
+    "query_id": "q08",
+    "query": "What future work does the document recommend?",
+    "relevant_documents": ["document_004"]
+  },
+  {
+    "query_id": "q09",
+    "query": "What machine learning model was used in the proposed system?",
+    "relevant_documents": ["document_005"]
+  },
+  {
+    "query_id": "q10",
+    "query": "What are the advantages of the proposed method?",
+    "relevant_documents": ["document_005"]
+  },
+  {
+    "query_id": "q11",
+    "query": "How was the dataset prepared before training?",
+    "relevant_documents": ["document_006"]
+  },
+  {
+    "query_id": "q12",
+    "query": "What preprocessing techniques were applied to the input data?",
+    "relevant_documents": ["document_006"]
+  },
+  {
+    "query_id": "q13",
+    "query": "What hardware or computational resources were used?",
+    "relevant_documents": ["document_007"]
+  },
+  {
+    "query_id": "q14",
+    "query": "What software frameworks and libraries were used?",
+    "relevant_documents": ["document_007"]
+  },
+  {
+    "query_id": "q15",
+    "query": "What was the reported accuracy or performance of the system?",
+    "relevant_documents": ["document_008"]
+  },
+  {
+    "query_id": "q16",
+    "query": "How does the proposed approach compare with existing methods?",
+    "relevant_documents": ["document_008"]
+  },
+  {
+    "query_id": "q17",
+    "query": "What architecture does the proposed system use?",
+    "relevant_documents": ["document_009"]
+  },
+  {
+    "query_id": "q18",
+    "query": "What are the main components of the system?",
+    "relevant_documents": ["document_009"]
+  },
+  {
+    "query_id": "q19",
+    "query": "What conclusions were drawn from the experiments?",
+    "relevant_documents": ["document_010"]
+  },
+  {
+    "query_id": "q20",
+    "query": "What recommendations are provided by the authors?",
+    "relevant_documents": ["document_010"]
+  }
+]

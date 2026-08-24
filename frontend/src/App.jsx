@@ -12,9 +12,12 @@ export default function App() {
   const [docsList, setDocsList] = useState([])
   const [uploads, setUploads] = useState([])
   
+
+  // Inside App.jsx
   const [query, setQuery] = useState('')
   const [topK, setTopK] = useState(5)
   const [searchResults, setSearchResults] = useState([])
+  const [generatedAnswer, setGeneratedAnswer] = useState('') // New state
   const [isSearching, setIsSearching] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
 
@@ -73,33 +76,39 @@ export default function App() {
     }
   }
 
-  const handleSearch = async () => {
-    if (!query.trim()) return
-    setIsSearching(true)
-    setHasSearched(true)
 
-    try {
-      const results = await search.query(query, topK)
-      setSearchResults(Array.isArray(results) ? results : results?.results || [])
-    } catch (err) {
-      console.error('Search query failed:', err)
-      setSearchResults([])
-    } finally {
-      setIsSearching(false)
-    }
+
+const handleSearch = async () => {
+  if (!query.trim()) return
+  setIsSearching(true)
+  setHasSearched(true)
+  setGeneratedAnswer('') // Reset previous answer
+
+  try {
+    const data = await search.query(query, topK)
+    // FastAPI returns { answer: "...", sources: [...] }
+    setGeneratedAnswer(data.answer || '')
+    setSearchResults(data.sources || [])
+  } catch (err) {
+    console.error('Search query failed:', err)
+    setGeneratedAnswer('An error occurred while generating the answer.')
+    setSearchResults([])
+  } finally {
+    setIsSearching(false)
   }
+}
 
   if (!isAuthenticated) {
     return <LandingPage onAuthSuccess={handleAuthSuccess} />
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#0B0F17] text-slate-100 font-sans antialiased relative overflow-hidden">
+    <div className="min-h-screen bg-[#0B0F17] text-slate-100 font-sans antialiased relative">
       {/* Background Glows */}
-      <div className="absolute top-1/4 left-1/3 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-10 right-10 w-[400px] h-[400px] bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="fixed top-1/4 left-1/3 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="fixed bottom-10 right-10 w-[400px] h-[400px] bg-cyan-500/5 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Structured Sidebar */}
+      {/* Fixed Sidebar */}
       <Sidebar
         userEmail={userEmail}
         docs={docsList}
@@ -109,8 +118,8 @@ export default function App() {
         onLogout={handleLogout}
       />
 
-      {/* Centered Main Workspace Content */}
-      <main className="flex-1 flex flex-col justify-center items-center min-w-0 p-6 md:p-12 z-10 min-h-screen">
+      {/* Main Workspace Content (Shifted right by Sidebar's width w-80 / md:ml-80) */}
+      <main className="md:ml-80 min-h-screen flex flex-col items-center p-6 md:p-12 z-10 relative">
         <div className="max-w-3xl w-full space-y-8 my-auto">
           
           {/* Header Status Section */}
@@ -138,35 +147,53 @@ export default function App() {
           />
 
           {/* Results Container */}
-          {hasSearched ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between px-1">
-                <p className="text-xs uppercase tracking-wide text-slate-500 font-mono font-medium">
-                  {isSearching ? 'Querying Vector Engine...' : `Results (${searchResults.length})`}
-                </p>
-              </div>
+{/* Results Container */}
+{hasSearched && (
+  <div className="space-y-6">
+    
+    {/* 1. AI Synthesized Answer Card */}
+    <div className="bg-[#121824] border border-emerald-500/30 rounded-2xl p-6 space-y-3 shadow-lg shadow-emerald-950/20">
+      <div className="flex items-center justify-between border-b border-white/10 pb-3">
+        <div className="flex items-center gap-2 text-emerald-400 font-mono text-xs font-semibold uppercase tracking-wider">
+          <Sparkles size={16} />
+          AI Synthesized Answer
+        </div>
+        <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-mono">
+          RAG Pipeline
+        </span>
+      </div>
 
-              {searchResults.length === 0 && !isSearching ? (
-                <div className="bg-[#121824]/60 border border-white/10 rounded-2xl p-8 text-center text-slate-400 text-sm">
-                  No matching vector context found. Try increasing the top-$k$ limit or rephrasing your search query.
-                </div>
-              ) : (
-                searchResults.map((result, idx) => (
-                  <ResultCard key={result.chunk_id || result.id || idx} result={result} />
-                ))
-              )}
-            </div>
-          ) : (
-            <div className="bg-[#121824]/40 border border-dashed border-white/10 rounded-2xl p-10 text-center space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">
-                <Sparkles size={20} />
-              </div>
-              <h3 className="text-sm font-semibold text-slate-200">Ready for semantic search</h3>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
-                Enter a query above to calculate dense vector embeddings and fetch nearest neighbors from Qdrant.
-              </p>
-            </div>
-          )}
+      {isSearching ? (
+        <div className="flex items-center gap-3 text-slate-400 text-sm py-2">
+          <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+          <span>Reading context chunks & synthesizing answer...</span>
+        </div>
+      ) : (
+        <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">
+          {generatedAnswer || "No answer could be generated."}
+        </p>
+      )}
+    </div>
+
+    {/* 2. Source Context Chunks Header */}
+    <div className="flex items-center justify-between px-1">
+      <p className="text-xs uppercase tracking-wide text-slate-500 font-mono font-medium">
+        {isSearching ? 'Fetching sources...' : `Retrieved Context Chunks (${searchResults.length})`}
+      </p>
+    </div>
+
+    {/* 3. Source Cards */}
+    {searchResults.length === 0 && !isSearching ? (
+      <div className="bg-[#121824]/60 border border-white/10 rounded-2xl p-8 text-center text-slate-400 text-sm">
+        No matching vector context found in your documents.
+      </div>
+    ) : (
+      searchResults.map((result, idx) => (
+        <ResultCard key={result.chunk_id || result.id || idx} result={result} />
+      ))
+    )}
+  </div>
+)}
         </div>
       </main>
     </div>

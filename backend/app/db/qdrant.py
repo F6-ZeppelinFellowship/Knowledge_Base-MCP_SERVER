@@ -164,6 +164,7 @@ class QdrantStorage:
             query_filter = Filter(must=must_list)
 
         try:
+            # query_points is the standard search method in qdrant-client v1.10+
             res = self.client.query_points(
                 collection_name=col_name,
                 query=query_vector,
@@ -289,7 +290,7 @@ class QdrantStorage:
             )
 
         scroll_filter = Filter(must=must_conditions) if must_conditions else None
-        
+
         try:
             records, _ = self.client.scroll(
                 collection_name=col_name,
@@ -318,5 +319,5 @@ class QdrantStorage:
         return list(docs.values())
 
 
-# Singleton instance for application use
-qdrant_db = QdrantStorage(location=":memory:")
+# Singleton instance initialized without hardcoded location so it reads settings.QDRANT_URL
+qdrant_db = QdrantStorage()

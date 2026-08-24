@@ -1,6 +1,7 @@
 import logging
 import importlib.metadata
-from typing import List, Optional
+from typing import List, Optional, Any
+import numpy as np
 
 # Defensive patch for package metadata compatibility in local environment
 _orig_version = importlib.metadata.version
@@ -33,18 +34,19 @@ class EmbeddingService:
     ):
         self.model_name = model_name or settings.EMBEDDING_MODEL_NAME
         self.openai_api_key = openai_api_key or settings.OPENAI_API_KEY
-        self._st_model = None
+        self._st_model: Any = None
         self._dimension: int = settings.EMBEDDING_DIMENSION
 
     @property
-    def st_model(self):
+    def st_model(self) -> Any:
         """Lazy loader for sentence-transformers model."""
         if self._st_model is None:
             try:
                 from sentence_transformers import SentenceTransformer
                 logger.info(f"Loading SentenceTransformer model: {self.model_name}")
                 self._st_model = SentenceTransformer(self.model_name)
-                self._dimension = self._st_model.get_sentence_embedding_dimension()
+                dim = self._st_model.get_sentence_embedding_dimension()
+                self._dimension = int(dim) if dim is not None else 384
             except Exception as e:
                 logger.error(f"Error loading SentenceTransformer model '{self.model_name}': {e}")
                 raise e
@@ -59,7 +61,7 @@ class EmbeddingService:
             return self._embed_openai([text])[0]
 
         embedding = self.st_model.encode(text, normalize_embeddings=True)
-        return embedding.tolist()
+        return np.asarray(embedding, dtype=np.float32).tolist()
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Generate embedding vectors for a batch of text strings."""
@@ -72,12 +74,12 @@ class EmbeddingService:
             return self._embed_openai(cleaned_texts)
 
         embeddings = self.st_model.encode(cleaned_texts, batch_size=32, normalize_embeddings=True)
-        return embeddings.tolist()
+        return np.asarray(embeddings, dtype=np.float32).tolist()
 
     def _embed_openai(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings using OpenAI API."""
         try:
-            import openai
+            import openai  # type: ignore
             client = openai.OpenAI(api_key=self.openai_api_key)
             response = client.embeddings.create(
                 input=texts,
@@ -89,12 +91,13 @@ class EmbeddingService:
         except Exception as e:
             logger.error(f"OpenAI embedding generation failed: {e}. Falling back to SentenceTransformers.")
             embeddings = self.st_model.encode(texts, batch_size=32, normalize_embeddings=True)
-            return embeddings.tolist()
+            return np.asarray(embeddings, dtype=np.float32).tolist()
 
     def get_dimension(self) -> int:
         """Return the vector dimensionality of the embedding model."""
         if self._st_model is not None:
-            return self._st_model.get_sentence_embedding_dimension()
+            dim = self._st_model.get_sentence_embedding_dimension()
+            return int(dim) if dim is not None else self._dimension
         return self._dimension
 
 
